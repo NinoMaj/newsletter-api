@@ -2,11 +2,16 @@ use newsletter_api::configuration::get_configuration;
 use sqlx::{Connection, PgConnection};
 use std::net::TcpListener;
 
-fn spawn_app() -> String {
+async fn spawn_app() -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind address");
     // We retrieve the port assigned to us by the OS
     let port = listener.local_addr().unwrap().port();
-    let server = newsletter_api::startup::run(listener).expect("Failed to bind address");
+    let configuration = get_configuration().expect("Failed to read configuration.");
+    let connection = PgConnection::connect(&configuration.database.connection_string())
+        .await
+        .expect("Failed to connect to Postgres.");
+    let server =
+        newsletter_api::startup::run(listener, connection).expect("Failed to bind address");
     let _ = tokio::spawn(server);
     // We return the application address to the caller!
     format!("http://127.0.0.1:{}", port)
@@ -15,7 +20,7 @@ fn spawn_app() -> String {
 #[actix_rt::test]
 async fn health_check_works() {
     // Arrange
-    let address = spawn_app();
+    let address = spawn_app().await;
     let client = reqwest::Client::new();
 
     // Act
